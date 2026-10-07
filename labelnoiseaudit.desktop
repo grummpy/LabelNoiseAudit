@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=LabelNoiseAudit
+GenericName=Label noise auditor
+Comment=Rank dataset rows that are most likely mislabeled
+Exec=bash -c 'cd "$(dirname "$1")" && exec ./launch.sh' bash %k
+Icon=assets/icon.png
+Terminal=true
+Categories=Education;Science;
+StartupNotify=true

@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "labelnoiseaudit"
+version = "0.1.0"
+description = "Rank the rows in a labeled dataset that are most likely mislabeled."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Chris" }]
+dependencies = [
+  "numpy==2.5.3",
+  "pandas==3.0.6",
+  "scikit-learn==1.9.1",
+  "scipy==1.18.1",
+  "pillow==12.3.0",
+  "flask==3.1.3",
+]
+
+[project.optional-dependencies]
+embeddings = ["torch>=2.2", "torchvision>=0.17"]
+cleanlab = ["cleanlab>=2.6"]
+dev = ["pytest==9.1.1", "ruff==0.16.10"]
+
+[project.scripts]
+labelnoiseaudit = "labelnoiseaudit.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["labelnoiseaudit*"]
+
+[tool.setuptools.package-data]
+labelnoiseaudit = ["web/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]

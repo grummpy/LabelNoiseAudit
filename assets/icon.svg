@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="LabelNoiseAudit">
+  <rect width="512" height="512" rx="108" fill="#1B2431"/>
+  <rect x="28" y="28" width="456" height="456" rx="84" fill="#243140" stroke="#334155" stroke-width="8"/>
+  <g transform="translate(232 250) rotate(-18)">
+    <path fill="#F4F7FB" d="M-78-132h156a24 24 0 0 1 24 24v214l-102 68-102-68v-214a24 24 0 0 1 24-24z"/>
+    <circle cy="-78" r="18" fill="#243140"/>
+  </g>
+  <g fill="none" stroke="#F58220" stroke-width="28" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="318" cy="318" r="62"/>
+    <path d="M364 366 L424 430"/>
+  </g>
+</svg>

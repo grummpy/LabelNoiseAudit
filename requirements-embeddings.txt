@@ -1,0 +1,5 @@
+# Optional. The launcher does not install this file.
+# Installing it does not download model weights. Pass --allow-weight-download,
+# or tick both boxes in the review UI, before any weights are fetched.
+torch>=2.2
+torchvision>=0.17

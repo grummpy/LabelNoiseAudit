@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LabelNoiseAudit</title>
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <img src="/static/icon.svg" alt="" width="48" height="48">
+      <h1>Label<span>Noise</span>Audit</h1>
+    </div>
+    <p class="tagline">Out-of-fold probabilities, confident-learning scores, and neighbor disagreement. Files stay on this computer.</p>
+  </header>
+
+  <main class="layout">
+    <section class="stack">
+      <article class="card" id="dataset-card">
+        <header class="card-head">
+          <h2>Dataset</h2>
+          <div class="tabs" role="tablist">
+            <button type="button" class="tab active" data-tab="builtin">Built-in</button>
+            <button type="button" class="tab" data-tab="csv">CSV</button>
+            <button type="button" class="tab" data-tab="images">Images</button>
+          </div>
+        </header>
+        <div class="tab-panel" data-panel="builtin">
+          <div class="builtin-grid" id="builtin-grid"></div>
+        </div>
+        <div class="tab-panel hidden" data-panel="csv">
+          <label class="file">
+            <input type="file" id="csv-file" accept=".csv,text/csv">
+            <span>Upload a CSV</span>
+          </label>
+          <label class="path-field">Path on this computer
+            <input type="text" id="csv-path" placeholder="/path/to/labels.csv" autocomplete="off">
+          </label>
+          <button type="button" class="secondary" id="open-csv-path">Open path</button>
+        </div>
+        <div class="tab-panel hidden" data-panel="images">
+          <p class="hint">Class-per-subfolder, a CSV with <code>path</code> and <code>label</code> columns, or a zip of either.</p>
+          <label class="file">
+            <input type="file" id="zip-file" accept=".zip,application/zip">
+            <span>Upload a zip</span>
+          </label>
+          <label class="path-field">Folder or CSV path
+            <input type="text" id="image-path" placeholder="/path/to/images" autocomplete="off">
+          </label>
+          <button type="button" class="secondary" id="open-image-path">Open path</button>
+        </div>
+        <div id="column-picker" class="hidden">
+          <div class="picker-row">
+            <label>Label column
+              <select id="label-column"></select>
+            </label>
+            <label>Folds
+              <input type="number" id="folds" min="2" max="10" value="5">
+            </label>
+            <label>Seed
+              <input type="number" id="seed" value="42">
+            </label>
+          </div>
+          <div id="feature-list" class="feature-list"></div>
+          <div id="embed-row" class="embed-row hidden">
+            <label><input type="checkbox" id="use-embeddings"> Pretrained embeddings (off unless you opt in)</label>
+            <label><input type="checkbox" id="allow-download"> Allow a one-time weight download</label>
+            <p class="hint" id="embed-hint"></p>
+          </div>
+          <button type="button" class="primary" id="run-audit">Run audit</button>
+        </div>
+        <p class="status-line" id="dataset-status"></p>
+      </article>
+
+      <article class="card">
+        <header class="card-head">
+          <h2>Review</h2>
+          <div class="filters">
+            <label>Class
+              <select id="filter-class"><option value="all">All classes</option></select>
+            </label>
+            <label>Status
+              <select id="filter-status">
+                <option value="all">All</option>
+                <option value="Check">Check</option>
+                <option value="Clean">Clean</option>
+              </select>
+            </label>
+            <label>Find
+              <input type="search" id="filter-query" placeholder="Row id">
+            </label>
+          </div>
+        </header>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Rank</th>
+                <th>Image</th>
+                <th>ID</th>
+                <th>Label</th>
+                <th>Predicted</th>
+                <th>Confidence</th>
+                <th>Suspicion</th>
+                <th>Status</th>
+                <th>Decision</th>
+              </tr>
+            </thead>
+            <tbody id="review-body">
+              <tr><td colspan="9" class="empty">Open a dataset and run an audit.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <footer class="pager">
+          <button type="button" id="prev-page" class="secondary">Previous</button>
+          <span id="page-label">Page 1</span>
+          <button type="button" id="next-page" class="secondary">Next</button>
+        </footer>
+        <div id="reason-panel" class="reason-panel hidden"></div>
+      </article>
+
+      <article class="card hidden" id="grid-card">
+        <header class="card-head"><h2>Image review</h2></header>
+        <div class="image-grid" id="image-grid"></div>
+      </article>
+    </section>
+
+    <aside class="stack">
+      <article class="card">
+        <header class="card-head">
+          <h2>Suspicion score <span class="muted">top ranked</span></h2>
+        </header>
+        <ol class="bars" id="suspicion-bars">
+          <li class="empty-bars">Run an audit to rank rows.</li>
+        </ol>
+        <p class="hint">Lower self-confidence and a label mismatch raise the score. Neighbor disagreement is blended in.</p>
+      </article>
+      <article class="card">
+        <header class="card-head"><h2>Noise rate by class</h2></header>
+        <ul class="noise-list" id="noise-list"><li class="hint">Estimated from the confident joint after the audit.</li></ul>
+      </article>
+      <article class="card">
+        <header class="card-head"><h2>Export</h2></header>
+        <p class="hint">Keep, relabel, or drop each row. Export writes a new CSV and an audit log. The original file is not modified, and image files are left in place.</p>
+        <button type="button" class="primary" id="export-btn" disabled>Export cleaned CSV</button>
+        <div id="export-links"></div>
+      </article>
+    </aside>
+  </main>
+  <footer class="foot">Local only · 127.0.0.1 · no account · original files are never overwritten</footer>
+  <script src="/static/app.js"></script>
+</body>
+</html>

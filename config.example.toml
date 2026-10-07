@@ -1,0 +1,4 @@
+# Copy to config.toml if you want a reminder of the defaults.
+# config.toml is gitignored. The server always binds to 127.0.0.1.
+port = 8741
+open_browser = true
