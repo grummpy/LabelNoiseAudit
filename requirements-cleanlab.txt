@@ -1,0 +1,2 @@
+# Optional cross-check. The audit runs without it.
+cleanlab>=2.6
