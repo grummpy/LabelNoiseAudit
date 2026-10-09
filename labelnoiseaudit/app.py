@@ -182,6 +182,19 @@ def create_app(data_dir: Path | None = None) -> Flask:
             return jsonify({"error": str(exc)}), 400
         if not (dataset / "meta.json").is_file():
             return jsonify({"error": "Dataset not found."}), 404
+        dataset_meta = read_json(dataset / "meta.json")
+        frame = _source_frame(folder, dataset_id)
+        # The stored audit contract, not a later export request, owns the
+        # label identity.  Image audits always use their generated ``label``
+        # field; accepting a path-like request value here would let export
+        # overwrite image paths.
+        effective_label = (
+            "label"
+            if dataset_meta.get("kind") == "images"
+            else str(body.get("label_column") or dataset_meta["suggested_label"])
+        )
+        if effective_label not in frame.columns or effective_label == SOURCE_INDEX:
+            return jsonify({"error": "Choose a label column from this dataset."}), 400
         audit_id = uuid.uuid4().hex[:12]
         audit_dir = folder / "audits" / audit_id
         audit_dir.mkdir(parents=True)
@@ -189,7 +202,7 @@ def create_app(data_dir: Path | None = None) -> Flask:
         write_json(audit_dir / "status.json", {"status": "running", "progress": "Starting"})
         params = {
             "dataset_id": dataset_id,
-            "label_column": body.get("label_column"),
+            "label_column": effective_label,
             "feature_columns": body.get("feature_columns"),
             "column_kinds": body.get("column_kinds"),
             "n_splits": int(body.get("n_splits") or 5),
