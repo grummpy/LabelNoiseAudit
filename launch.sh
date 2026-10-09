@@ -23,8 +23,16 @@ if [[ -z "$PY" ]]; then
 fi
 
 if [[ ! -x .venv/bin/python ]]; then
-  echo "First run: creating a virtual environment and installing pinned packages..."
+  echo "Creating a virtual environment..."
   "$PY" -m venv .venv
+fi
+
+# A prior interrupted setup can leave a runnable Python without this project
+# or its dependencies.  Verify the actual entry point and finish installation
+# instead of treating the executable bit as a completed install.
+if ! .venv/bin/python -c 'import labelnoiseaudit' >/dev/null 2>&1 \
+  || ! .venv/bin/python -m pip check >/dev/null 2>&1; then
+  echo "Installing or repairing pinned packages..."
   .venv/bin/python -m pip install --upgrade pip
   .venv/bin/python -m pip install -r requirements.txt
   .venv/bin/python -m pip install -e . --no-deps

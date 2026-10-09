@@ -1,5 +1,7 @@
 import threading
+import time
 import urllib.request
+from io import BytesIO
 from pathlib import Path
 
 import pandas as pd
@@ -60,10 +62,11 @@ def test_review_round_trip_does_not_touch_the_source_csv(tmp_path: Path):
     assert started.status_code == 200, started.get_json()
     audit_id = started.get_json()["audit_id"]
     payload = None
-    for _ in range(100):
+    for _ in range(2_000):
         payload = client.get(f"/api/audits/{audit_id}").get_json()
         if payload["status"] != "running":
             break
+        time.sleep(0.01)
     assert payload["status"] == "done", payload
     row = payload["result"]["rows"][0]
     decision = client.post(
@@ -83,3 +86,36 @@ def test_review_round_trip_does_not_touch_the_source_csv(tmp_path: Path):
     assert sha256_file(source) == digest
     text = cleaned.data.decode("utf-8")
     assert "__lna_source_index" not in text
+
+
+def test_image_audit_binds_its_label_even_if_request_names_path(tmp_path: Path):
+    app = create_app(data_dir=tmp_path / "appdata")
+    client = app.test_client()
+    dataset = client.post("/api/datasets/builtin", json={"name": "shapes"}).get_json()
+    started = client.post(
+        "/api/audits",
+        json={"dataset_id": dataset["dataset_id"], "label_column": "path", "n_splits": 2},
+    )
+    assert started.status_code == 200, started.get_json()
+    audit_id = started.get_json()["audit_id"]
+    for _ in range(2_000):
+        payload = client.get(f"/api/audits/{audit_id}").get_json()
+        if payload["status"] != "running":
+            break
+        time.sleep(0.01)
+    assert payload["status"] == "done", payload
+    row = payload["result"]["rows"][0]
+    source_frame = pd.read_csv(tmp_path / "appdata" / "datasets" / dataset["dataset_id"] / "source.csv")
+    original = source_frame.loc[source_frame["__lna_source_index"] == row["source_index"]].iloc[0]
+    changed = client.post(
+        f"/api/audits/{audit_id}/decisions",
+        json={"source_index": row["source_index"], "action": "relabel", "new_label": "changed-label"},
+    )
+    assert changed.status_code == 200, changed.get_json()
+    exported = client.post(f"/api/audits/{audit_id}/export")
+    assert exported.status_code == 200, exported.get_json()
+    cleaned = client.get(exported.get_json()["cleaned_url"])
+    frame = pd.read_csv(BytesIO(cleaned.data))
+    exported_row = frame.loc[frame["path"] == original["path"]].iloc[0]
+    assert exported_row["path"] == original["path"]
+    assert exported_row["label"] == "changed-label"
