@@ -27,7 +27,7 @@ def test_launcher_files_exist_and_point_at_the_module():
 
 
 def test_linux_launcher_repairs_an_interrupted_environment(tmp_path: Path):
-    """A runnable venv Python alone is not proof that the app was installed."""
+    """A package __init__ can import while the actual CLI dependencies are absent."""
     project = tmp_path / "project"
     project.mkdir()
     shutil.copy(ROOT / "launch.sh", project / "launch.sh")
@@ -48,9 +48,13 @@ if [ \"$1\" = \"-m\" ] && [ \"$2\" = \"pip\" ]; then
   echo \"$*\" >> \"$LNA_TRACE\"
   case \"$*\" in
     *\" pip check\") test -f .venv/.dependencies-installed ;;
-    *\" -r requirements.txt\") touch .venv/.dependencies-installed ;;
+    *\" -r requirements.txt\") touch .venv/.dependencies-installed .venv/.runtime-dependencies-installed ;;
     *\" -e .\"*) touch .venv/.labelnoiseaudit-installed ;;
   esac
+  exit 0
+fi
+if [ \"$1\" = \"-m\" ] && [ \"$2\" = \"labelnoiseaudit\" ] && [ \"$3\" = \"--help\" ]; then
+  test -f .venv/.runtime-dependencies-installed
   exit 0
 fi
 if [ \"$1\" = \"-m\" ] && [ \"$2\" = \"labelnoiseaudit\" ]; then
@@ -64,7 +68,10 @@ exit 0
     fake_python.chmod(0o755)
     shutil.copy(fake_python, venv_python)
     venv_python.chmod(0o755)
+    # The old probe accepted this state: the stdlib-only package __init__ and
+    # pip metadata are present, but the imports required by the CLI are not.
     (project / ".venv" / ".labelnoiseaudit-installed").touch()
+    (project / ".venv" / ".dependencies-installed").touch()
     trace = tmp_path / "trace.txt"
     environment = os.environ | {
         "PATH": f"{tmp_path}{os.pathsep}{os.environ['PATH']}",
