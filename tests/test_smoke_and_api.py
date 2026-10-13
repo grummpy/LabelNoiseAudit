@@ -5,10 +5,12 @@ from io import BytesIO
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from labelnoiseaudit import HOST
 from labelnoiseaudit.app import create_app
 from labelnoiseaudit.export import sha256_file
+from labelnoiseaudit.serialize import read_json, write_json
 from labelnoiseaudit.server import make_bound_server
 
 
@@ -119,3 +121,48 @@ def test_image_audit_binds_its_label_even_if_request_names_path(tmp_path: Path):
     exported_row = frame.loc[frame["path"] == original["path"]].iloc[0]
     assert exported_row["path"] == original["path"]
     assert exported_row["label"] == "changed-label"
+
+
+@pytest.mark.parametrize("legacy_label", ["path", None])
+def test_export_normalizes_legacy_image_audit_path_binding(tmp_path: Path, legacy_label: str | None):
+    app = create_app(data_dir=tmp_path / "appdata")
+    client = app.test_client()
+    dataset = client.post("/api/datasets/builtin", json={"name": "shapes"}).get_json()
+    started = client.post("/api/audits", json={"dataset_id": dataset["dataset_id"], "n_splits": 2})
+    assert started.status_code == 200, started.get_json()
+    audit_id = started.get_json()["audit_id"]
+    for _ in range(2_000):
+        payload = client.get(f"/api/audits/{audit_id}").get_json()
+        if payload["status"] != "running":
+            break
+        time.sleep(0.01)
+    assert payload["status"] == "done", payload
+    row = payload["result"]["rows"][0]
+    appdata = tmp_path / "appdata"
+    request_path = appdata / "audits" / audit_id / "request.json"
+    legacy_request = read_json(request_path)
+    if legacy_label is None:
+        legacy_request.pop("label_column")
+    else:
+        legacy_request["label_column"] = legacy_label
+    write_json(request_path, legacy_request)
+    changed = client.post(
+        f"/api/audits/{audit_id}/decisions",
+        json={"source_index": row["source_index"], "action": "relabel", "new_label": "changed-label"},
+    )
+    assert changed.status_code == 200, changed.get_json()
+    exported = client.post(f"/api/audits/{audit_id}/export")
+    assert exported.status_code == 200, exported.get_json()
+    body = exported.get_json()
+    cleaned = pd.read_csv(BytesIO(client.get(body["cleaned_url"]).data))
+    original_frame = pd.read_csv(appdata / "datasets" / dataset["dataset_id"] / "source.csv")
+    original = original_frame.loc[original_frame["__lna_source_index"] == row["source_index"]].iloc[0]
+    exported_row = cleaned.loc[cleaned["path"] == original["path"]].iloc[0]
+    assert exported_row["path"] == original["path"]
+    assert exported_row["label"] == "changed-label"
+    log = client.get(body["log_url"]).get_json()
+    assert log["audit"]["label_binding"] == {
+        "status": "normalized_legacy_image_audit",
+        "stored_label_column": legacy_label or "",
+        "effective_label_column": "label",
+    }
