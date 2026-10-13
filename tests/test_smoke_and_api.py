@@ -146,7 +146,7 @@ def test_export_normalizes_legacy_image_audit_path_binding(tmp_path: Path, legac
     else:
         legacy_request["label_column"] = legacy_label
     write_json(request_path, legacy_request)
-    changed = client.post(f"/api/audits/{audit_id}/decisions", json={"source_index": row["source_index"], "action": "relabel", "new_label": "changed-label"})
+    changed = client.post(\n        f"/api/audits/{audit_id}/decisions",\n        json={"source_index": row["source_index"], "action": "relabel", "new_label": "changed-label"},\n    )
     assert changed.status_code == 200, changed.get_json()
     exported = client.post(f"/api/audits/{audit_id}/export")
     assert exported.status_code == 200, exported.get_json()
@@ -158,4 +158,4 @@ def test_export_normalizes_legacy_image_audit_path_binding(tmp_path: Path, legac
     assert exported_row["path"] == original["path"]
     assert exported_row["label"] == "changed-label"
     log = client.get(body["log_url"]).get_json()
-    assert log["audit"]["label_binding"] == {"status": "normalized_legacy_image_audit", "stored_label_column": legacy_label or "", "effective_label_column": "label"}
+    assert log["audit"]["label_binding"] == {\n        "status": "normalized_legacy_image_audit",\n        "stored_label_column": legacy_label or "",\n        "effective_label_column": "label",\n    }
