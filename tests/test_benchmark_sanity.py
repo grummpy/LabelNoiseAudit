@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 
 from labelnoiseaudit.audit import audit_matrix
+from labelnoiseaudit.benchmark import markdown_table
 from labelnoiseaudit.datasets import load_builtin_frame, synthetic_ambiguous_minority_matrix
 from labelnoiseaudit.metrics import ranking_report
 from labelnoiseaudit.noise import inject_noise
@@ -70,6 +71,25 @@ def test_review_budget_reports_minority_false_positives_and_uncertainty():
     assert review["by_given_class"]["minority"]["n_injected_noise"] == 1
     lower, upper = review["precision_wilson_95"]
     assert 0.0 <= lower < 0.5 < upper <= 1.0
+
+
+def test_benchmark_markdown_has_one_delimiter_cell_per_header_cell():
+    report = {
+        "datasets": {
+            "synthetic": {
+                "minority_classes": ["minority"],
+                "runs": [{
+                    "noise": "uniform", "rate": 0.1, "k": 1, "precision_at_k": 1.0, "recall_at_k": 1.0,
+                    "review_budget": {"n_reviewed": 1, "precision": 1.0, "recall": 1.0,
+                                      "precision_wilson_95": [0.2, 1.0],
+                                      "by_given_class": {"minority": {"false_positives": 0}}},
+                    "auroc": 1.0,
+                }],
+            }
+        }
+    }
+    header, delimiter, *_rows = markdown_table(report).splitlines()
+    assert len(header.strip("|").split("|")) == len(delimiter.strip("|").split("|")) == 12
 
 
 def test_ambiguous_minority_fixture_is_synthetic_and_imbalanced():

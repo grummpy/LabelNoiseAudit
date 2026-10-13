@@ -56,7 +56,17 @@ def project_revision() -> str:
 
 
 def dependency_versions() -> dict[str, str]:
-    names = ("numpy", "pandas", "scikit-learn", "scipy", "pillow", "flask")
+    names = (
+        "numpy",
+        "pandas",
+        "scikit-learn",
+        "scipy",
+        "pillow",
+        "flask",
+        "torch",
+        "torchvision",
+        "cleanlab",
+    )
     versions: dict[str, str] = {}
     for name in names:
         try:
