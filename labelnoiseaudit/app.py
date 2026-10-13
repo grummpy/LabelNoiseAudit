@@ -441,7 +441,7 @@ def _export_label_binding(
         raise ValueError("Legacy image audit cannot be exported safely: its generated label field is unavailable.")
     if stored == expected:
         return expected, {"status": "stored", "effective_label_column": expected}
-    return expected, {"status": "normalized_legacy_image_audit", "stored_label_column": "" if stored is None else str(stored), "effective_label_column": expected}
+    return expected, {\n        "status": "normalized_legacy_image_audit",\n        "stored_label_column": "" if stored is None else str(stored),\n        "effective_label_column": expected,\n    }
 
 
 def _records_from_image_root(path: Path) -> list[tuple[str, str]]:
