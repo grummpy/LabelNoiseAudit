@@ -295,6 +295,7 @@ def audit_matrix(
     image_paths: list[str | None] | None = None,
     progress: Progress | None = None,
     preprocessor_factory: Callable[[], object] | None = None,
+    preprocessor_identity: str | None = None,
     use_cleanlab: bool = True,
     source_path: Path | None = None,
 ) -> AuditResult:
@@ -306,6 +307,14 @@ def audit_matrix(
     def default_factory():
         return StandardScaler()
 
+    if preprocessor_factory is not None:
+        if not isinstance(preprocessor_identity, str) or not preprocessor_identity.strip():
+            raise ValueError("Custom preprocessor_factory requires a stable preprocessor_identity for provenance")
+        feature_backend = "numeric_matrix_custom_preprocessor_logistic_regression"
+        configuration = {"input_kind": "numeric_matrix", "preprocessor_identity": preprocessor_identity.strip()}
+    else:
+        feature_backend = "numeric_matrix_standard_scaler_logistic_regression"
+        configuration = {"input_kind": "numeric_matrix"}
     factory = preprocessor_factory or default_factory
     proba, neighbor_labels, neighbor_indices, used_splits, fold_assignments = run_oof(
         array,
@@ -324,8 +333,8 @@ def audit_matrix(
         seed=seed,
         n_splits=used_splits,
         n_neighbors=n_neighbors,
-        feature_backend="numeric_matrix_standard_scaler_logistic_regression",
-        configuration={"input_kind": "numeric_matrix"},
+        feature_backend=feature_backend,
+        configuration=configuration,
     )
     return assemble_result(
         proba=proba,
@@ -355,6 +364,7 @@ def audit_table(
     row_ids: list[str] | None = None,
     progress: Progress | None = None,
     preprocessor_factory: Callable[[], object] | None = None,
+    preprocessor_identity: str | None = None,
     use_cleanlab: bool = True,
     source_path: Path | None = None,
 ) -> AuditResult:
@@ -377,6 +387,17 @@ def audit_table(
     def default_factory():
         return build_preprocessor(kinds)
 
+    if preprocessor_factory is not None:
+        if not isinstance(preprocessor_identity, str) or not preprocessor_identity.strip():
+            raise ValueError("Custom preprocessor_factory requires a stable preprocessor_identity for provenance")
+        feature_backend = "table_custom_preprocessor_logistic_regression"
+        preprocessor_config: dict[str, object] = {
+            "column_kinds": kinds,
+            "preprocessor_identity": preprocessor_identity.strip(),
+        }
+    else:
+        feature_backend = "table_preprocessor_logistic_regression"
+        preprocessor_config = {"column_kinds": kinds}
     factory = preprocessor_factory or default_factory
     if progress is not None:
         progress("Fitting out-of-fold models")
@@ -398,12 +419,12 @@ def audit_table(
         seed=seed,
         n_splits=used_splits,
         n_neighbors=n_neighbors,
-        feature_backend="table_preprocessor_logistic_regression",
+        feature_backend=feature_backend,
         configuration={
             "input_kind": "table",
             "label_column": str(label_column),
             "feature_columns": [str(column) for column in features],
-            "column_kinds": kinds,
+            **preprocessor_config,
         },
     )
     return assemble_result(

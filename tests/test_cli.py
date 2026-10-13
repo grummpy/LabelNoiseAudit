@@ -55,6 +55,7 @@ def test_cli_audit_writes_json_without_touching_the_csv(tmp_path: Path):
     assert provenance["source"]["file_name"] == "tiny.csv"
     assert len(provenance["source"]["file_sha256"]) == 64
     assert len(provenance["configuration"]["sha256"]) == 64
+    assert {"torch", "torchvision", "cleanlab"} <= set(provenance["runtime"]["dependencies"])
     for row in payload["rows"]:
         assert 1 <= row["oof_fold"] <= payload["n_splits"]
         assert list(row["oof_probabilities"]) == payload["class_names"]

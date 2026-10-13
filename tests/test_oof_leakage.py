@@ -1,7 +1,8 @@
 import numpy as np
+import pandas as pd
 from sklearn.model_selection import StratifiedKFold
 
-from labelnoiseaudit.audit import audit_matrix, result_to_dict
+from labelnoiseaudit.audit import audit_matrix, audit_table, result_to_dict
 from labelnoiseaudit.oof import choose_n_splits
 
 
@@ -14,6 +15,14 @@ class Spy:
 
     def transform(self, features):
         return np.asarray(features, dtype=float)[:, 1:]
+
+
+class Identity:
+    def fit(self, features, y=None):
+        return self
+
+    def transform(self, features):
+        return np.asarray(features, dtype=float)
 
 
 def test_preprocessor_is_fit_on_the_train_fold_only():
@@ -34,14 +43,18 @@ def test_preprocessor_is_fit_on_the_train_fold_only():
     labels = np.array([0] * count + [1] * count)
     seed = 0
     n_splits = 5
-    audit_matrix(
+    result = audit_matrix(
         features,
         labels,
         seed=seed,
         n_splits=n_splits,
         preprocessor_factory=Spy,
+        preprocessor_identity="tests.Spy/v1",
         use_cleanlab=False,
     )
+    configuration = result.provenance["configuration"]
+    assert configuration["feature_backend"] == "numeric_matrix_custom_preprocessor_logistic_regression"
+    assert configuration["preprocessor_identity"] == "tests.Spy/v1"
     assert len(Spy.seen) == n_splits
     folder = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=seed)
     for (train_idx, test_idx), seen in zip(folder.split(np.zeros(len(labels)), labels), Spy.seen, strict=True):
@@ -49,6 +62,29 @@ def test_preprocessor_is_fit_on_the_train_fold_only():
         test_ids = set(features[test_idx, 0].astype(int).tolist())
         assert seen == train_ids
         assert seen.isdisjoint(test_ids)
+
+
+def test_custom_preprocessor_requires_a_stable_provenance_identity():
+    features = np.array([[0.0], [0.1], [3.0], [3.1]])
+    labels = np.array(["left", "left", "right", "right"])
+    with np.testing.assert_raises_regex(ValueError, "preprocessor_identity"):
+        audit_matrix(features, labels, n_splits=2, preprocessor_factory=Spy, use_cleanlab=False)
+
+
+def test_custom_table_preprocessor_retains_column_kinds_in_provenance():
+    frame = pd.DataFrame({"feature": [0.0, 0.1, 3.0, 3.1], "label": ["left", "left", "right", "right"]})
+    result = audit_table(
+        frame,
+        "label",
+        n_splits=2,
+        preprocessor_factory=Identity,
+        preprocessor_identity="tests.Identity/v1",
+        use_cleanlab=False,
+    )
+    configuration = result.provenance["configuration"]
+    assert configuration["feature_backend"] == "table_custom_preprocessor_logistic_regression"
+    assert configuration["preprocessor_identity"] == "tests.Identity/v1"
+    assert configuration["column_kinds"] == {"numeric": ["feature"], "categorical": [], "text": []}
 
 
 def test_neighbors_do_not_include_the_row_itself():

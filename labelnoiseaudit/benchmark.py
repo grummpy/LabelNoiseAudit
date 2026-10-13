@@ -127,7 +127,7 @@ def markdown_table(report: dict) -> str:
             "| Dataset | Noise | Rate | k | Precision@k | Recall@k | Review n | "
             "Precision@review | Recall@review | 95% CI | Minority false positives | AUROC |"
         ),
-        "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | ---: |",
+        "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | ---: |",
     ]
     for name, payload in report["datasets"].items():
         for run in payload["runs"]:

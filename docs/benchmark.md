@@ -1,5 +1,5 @@
 | Dataset | Noise | Rate | k | Precision@k | Recall@k | Review n | Precision@review | Recall@review | 95% CI | Minority false positives | AUROC |
-| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | ---: |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | ---: |
 | iris | uniform | 5% | 7 | 1.000 | 1.000 | 8 | 0.875 | 1.000 | 0.529–0.978 | setosa: 0, versicolor: 1, virginica: 0 | 1.000 |
 | iris | uniform | 10% | 15 | 0.933 | 0.933 | 8 | 1.000 | 0.533 | 0.676–1.000 | setosa: 0, versicolor: 0, virginica: 0 | 0.994 |
 | iris | uniform | 20% | 32 | 0.781 | 0.781 | 8 | 1.000 | 0.250 | 0.676–1.000 | setosa: 0, versicolor: 0, virginica: 0 | 0.968 |
