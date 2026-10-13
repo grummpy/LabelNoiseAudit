@@ -14,6 +14,7 @@ from labelnoiseaudit.noise import inject_noise
 
 RATES = (0.05, 0.10, 0.20)
 KINDS = ("uniform", "class_conditional")
+REVIEW_BUDGET_FRACTION = 0.05
 Progress = Callable[[str], None]
 
 
@@ -33,6 +34,15 @@ def run_benchmark(seed: int = 42, progress: Progress | None = None) -> dict:
             "k is the number of injected flips. At that cutoff precision@k equals "
             "recall@k. precision_at_10pct and recall_at_10pct use k = 10% of rows."
         ),
+        "review_budget": {
+            "fraction": REVIEW_BUDGET_FRACTION,
+            "definition": (
+                "A predeclared human review budget. Precision and recall are measured "
+                "only among the top-ranked rows within this budget; the Wilson interval "
+                "describes uncertainty in that reviewed sample."
+            ),
+            "decision_boundary": "Synthetic ranking evidence only; no row is relabeled or dropped automatically.",
+        },
         "rates": list(RATES),
         "kinds": list(KINDS),
         "datasets": {},
@@ -43,9 +53,18 @@ def run_benchmark(seed: int = 42, progress: Progress | None = None) -> dict:
             features, labels = payload
             n_rows = int(len(labels))
             n_classes = int(len(set(np.asarray(labels).tolist())))
+            clean_labels = np.asarray(labels)
         else:
+            frame: pd.DataFrame = payload
             n_rows = int(len(payload))
             n_classes = int(payload[label_column].nunique())
+            clean_labels = frame[label_column].to_numpy()
+        class_counts = {
+            str(label): int((clean_labels == label).sum())
+            for label in sorted(set(clean_labels.tolist()), key=str)
+        }
+        smallest = min(class_counts.values())
+        minority_classes = [label for label, count in class_counts.items() if count == smallest]
         for noise_kind in KINDS:
             for rate in RATES:
                 if progress is not None:
@@ -78,7 +97,12 @@ def run_benchmark(seed: int = 42, progress: Progress | None = None) -> dict:
                         n_splits=5,
                         use_cleanlab=False,
                     )
-                metrics = ranking_report(_scores_in_source_order(result), mask)
+                metrics = ranking_report(
+                    _scores_in_source_order(result),
+                    mask,
+                    labels=noisy,
+                    review_budget_fraction=REVIEW_BUDGET_FRACTION,
+                )
                 runs.append(
                     {
                         "noise": noise_kind,
@@ -90,6 +114,8 @@ def run_benchmark(seed: int = 42, progress: Progress | None = None) -> dict:
             "n_rows": n_rows,
             "n_classes": n_classes,
             "task": kind,
+            "class_counts": class_counts,
+            "minority_classes": minority_classes,
             "runs": runs,
         }
     return report
@@ -97,15 +123,31 @@ def run_benchmark(seed: int = 42, progress: Progress | None = None) -> dict:
 
 def markdown_table(report: dict) -> str:
     lines = [
-        "| Dataset | Noise | Rate | k | Precision@k | Recall@k | Precision@10% | Recall@10% | AUROC |",
-        "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+        (
+            "| Dataset | Noise | Rate | k | Precision@k | Recall@k | Review n | "
+            "Precision@review | Recall@review | 95% CI | Minority false positives | AUROC |"
+        ),
+        "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | ---: |",
     ]
     for name, payload in report["datasets"].items():
         for run in payload["runs"]:
+            review = run["review_budget"]
+            minority = {
+                label: review["by_given_class"][label]["false_positives"]
+                for label in payload["minority_classes"]
+            }
+            interval = review["precision_wilson_95"]
             lines.append(
                 "| {name} | {noise} | {rate:.0%} | {k} | {precision_at_k:.3f} | {recall_at_k:.3f} | "
-                "{precision_at_10pct:.3f} | {recall_at_10pct:.3f} | {auroc:.3f} |".format(
+                "{review_n} | {review_precision:.3f} | {review_recall:.3f} | {lower:.3f}–{upper:.3f} | "
+                "{minority} | {auroc:.3f} |".format(
                     name=name,
+                    review_n=review["n_reviewed"],
+                    review_precision=review["precision"],
+                    review_recall=review["recall"],
+                    lower=interval[0],
+                    upper=interval[1],
+                    minority=", ".join(f"{label}: {count}" for label, count in minority.items()),
                     **run,
                 )
             )

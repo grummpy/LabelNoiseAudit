@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pandas as pd
@@ -46,6 +47,18 @@ def test_cli_audit_writes_json_without_touching_the_csv(tmp_path: Path):
     assert out.is_file()
     assert "ensemble_score" in out.read_text(encoding="utf-8")
     assert source.read_bytes() == before
+    payload = json.loads(out.read_text(encoding="utf-8"))
+    provenance = payload["provenance"]
+    assert provenance["schema_version"] == "labelnoiseaudit.oof-provenance/v1"
+    assert provenance["purpose"] == "ranking_and_selection_only"
+    assert provenance["final_evaluation"]["included"] is False
+    assert provenance["source"]["file_name"] == "tiny.csv"
+    assert len(provenance["source"]["file_sha256"]) == 64
+    assert len(provenance["configuration"]["sha256"]) == 64
+    for row in payload["rows"]:
+        assert 1 <= row["oof_fold"] <= payload["n_splits"]
+        assert list(row["oof_probabilities"]) == payload["class_names"]
+        assert sum(row["oof_probabilities"].values()) == pytest.approx(1.0)
 
 
 def test_cli_refuses_to_overwrite_the_csv(tmp_path: Path):

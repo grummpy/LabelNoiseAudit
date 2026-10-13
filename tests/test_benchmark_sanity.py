@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 
 from labelnoiseaudit.audit import audit_matrix
-from labelnoiseaudit.datasets import load_builtin_frame
+from labelnoiseaudit.datasets import load_builtin_frame, synthetic_ambiguous_minority_matrix
 from labelnoiseaudit.metrics import ranking_report
 from labelnoiseaudit.noise import inject_noise
 
@@ -53,3 +53,27 @@ def test_published_benchmark_beats_random_and_iris_matches():
     fresh = ranking_report(scores, mask)
     assert fresh["auroc"] == pytest.approx(cell["auroc"], abs=1e-9)
     assert fresh["precision_at_k"] == pytest.approx(cell["precision_at_k"], abs=1e-9)
+
+
+def test_review_budget_reports_minority_false_positives_and_uncertainty():
+    report = ranking_report(
+        np.array([0.9, 0.8, 0.7, 0.1]),
+        np.array([True, False, True, False]),
+        labels=np.array(["majority", "minority", "minority", "majority"]),
+        review_budget_fraction=0.5,
+    )
+    review = report["review_budget"]
+    assert review["n_reviewed"] == 2
+    assert review["true_positives"] == 1
+    assert review["false_positives"] == 1
+    assert review["by_given_class"]["minority"]["false_positives"] == 1
+    assert review["by_given_class"]["minority"]["n_injected_noise"] == 1
+    lower, upper = review["precision_wilson_95"]
+    assert 0.0 <= lower < 0.5 < upper <= 1.0
+
+
+def test_ambiguous_minority_fixture_is_synthetic_and_imbalanced():
+    features, labels = synthetic_ambiguous_minority_matrix(seed=7)
+    assert features.shape == (184, 3)
+    assert int((labels == "minority").sum()) == 24
+    assert int((labels == "majority_a").sum()) == 80

@@ -24,8 +24,15 @@ if [[ -z "$PY" ]]; then
 fi
 
 if [[ ! -x .venv/bin/python ]]; then
-  echo "First run: creating a virtual environment and installing pinned packages..."
+  echo "First run: creating a virtual environment..."
   "$PY" -m venv .venv
+fi
+
+# Do not treat a venv Python (or LabelNoiseAudit's stdlib-only __init__) as a
+# complete setup. Interrupted installs often leave precisely that state.
+if ! .venv/bin/python -m pip check >/dev/null 2>&1 \
+  || ! .venv/bin/python -m labelnoiseaudit --help >/dev/null 2>&1; then
+  echo "Installing or repairing pinned packages..."
   .venv/bin/python -m pip install --upgrade pip
   .venv/bin/python -m pip install -r requirements.txt
   .venv/bin/python -m pip install -e . --no-deps

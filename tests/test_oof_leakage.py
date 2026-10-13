@@ -1,7 +1,7 @@
 import numpy as np
 from sklearn.model_selection import StratifiedKFold
 
-from labelnoiseaudit.audit import audit_matrix
+from labelnoiseaudit.audit import audit_matrix, result_to_dict
 from labelnoiseaudit.oof import choose_n_splits
 
 
@@ -69,3 +69,13 @@ def test_neighbors_do_not_include_the_row_itself():
 def test_split_count_shrinks_for_a_small_class():
     labels = np.array([0, 0, 0, 1, 1, 1])
     assert choose_n_splits(labels, 5) == 3
+
+
+def test_every_exported_row_has_one_recorded_oof_fold_and_class_order():
+    features = np.array([[0.0], [0.1], [0.2], [0.3], [3.0], [3.1], [3.2], [3.3]])
+    labels = np.array(["left"] * 4 + ["right"] * 4)
+    payload = result_to_dict(audit_matrix(features, labels, n_splits=2, seed=9, use_cleanlab=False))
+    assert payload["provenance"]["configuration"]["class_order"] == ["left", "right"]
+    assert {row["oof_fold"] for row in payload["rows"]} == {1, 2}
+    for row in payload["rows"]:
+        assert set(row["oof_probabilities"]) == {"left", "right"}
