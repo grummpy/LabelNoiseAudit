@@ -294,6 +294,7 @@ def create_app(data_dir: Path | None = None) -> Flask:
             request_meta = read_json(audit_dir / "request.json")
             dataset_meta = read_json(_dataset_dir(folder, request_meta["dataset_id"]) / "meta.json")
             frame = _source_frame(folder, request_meta["dataset_id"])
+            label_column, binding = _export_label_binding(dataset_meta, request_meta, frame)
             decisions = read_json(audit_dir / "decisions.json")
             stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
             export_dir = audit_dir / "exports" / stamp
@@ -305,7 +306,7 @@ def create_app(data_dir: Path | None = None) -> Flask:
             result = read_json(audit_dir / "result.json") if (audit_dir / "result.json").is_file() else {}
             log = export_review(
                 frame,
-                request_meta["label_column"],
+                label_column,
                 decisions,
                 export_dir / "cleaned.csv",
                 export_dir / "audit-log.json",
@@ -315,6 +316,7 @@ def create_app(data_dir: Path | None = None) -> Flask:
                     "dataset_id": request_meta["dataset_id"],
                     "summary": result.get("summary", {}),
                     "noise_rates": result.get("noise_rates", {}),
+                    "label_binding": binding,
                 },
             )
         except OverwriteRefused as exc:
@@ -423,6 +425,23 @@ def _class_sample(series: pd.Series) -> list[str]:
     values = [str(value) for value in series.dropna().unique().tolist()]
     values.sort()
     return values[:12]
+
+
+def _export_label_binding(
+    dataset_meta: dict, request_meta: dict, frame: pd.DataFrame
+) -> tuple[str, dict[str, str]]:
+    """Return a safe export label and record any legacy image-audit repair."""
+    stored = request_meta.get("label_column")
+    if dataset_meta.get("kind") != "images":
+        if not isinstance(stored, str) or stored not in frame.columns:
+            raise ValueError("Saved audit has no usable label column; export is refused.")
+        return stored, {"status": "stored", "effective_label_column": stored}
+    expected = "label"
+    if expected not in frame.columns:
+        raise ValueError("Legacy image audit cannot be exported safely: its generated label field is unavailable.")
+    if stored == expected:
+        return expected, {"status": "stored", "effective_label_column": expected}
+    return expected, {"status": "normalized_legacy_image_audit", "stored_label_column": "" if stored is None else str(stored), "effective_label_column": expected}
 
 
 def _records_from_image_root(path: Path) -> list[tuple[str, str]]:
