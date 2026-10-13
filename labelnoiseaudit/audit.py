@@ -20,6 +20,7 @@ from labelnoiseaudit.features import (
 )
 from labelnoiseaudit.images import classic_features
 from labelnoiseaudit.oof import run_oof
+from labelnoiseaudit.provenance import image_source, make_provenance, table_source
 from labelnoiseaudit.scoring import (
     ensemble_scores,
     knn_disagreement,
@@ -50,6 +51,8 @@ class RowFinding:
     reasons: list[str]
     image_path: str | None = None
     cleanlab_flag: bool = False
+    oof_fold: int = 0
+    oof_probabilities: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass
@@ -64,6 +67,7 @@ class AuditResult:
     seed: int
     summary: dict
     rows_by_source: list[RowFinding] = field(default_factory=list)
+    provenance: dict[str, object] = field(default_factory=dict)
 
 
 def _encode(labels) -> tuple[np.ndarray, list[str]]:
@@ -128,9 +132,11 @@ def assemble_result(
     neighbor_indices: list[list[int]],
     n_splits: int,
     seed: int,
+    fold_assignments: np.ndarray,
     row_ids: list[str] | None = None,
     image_paths: list[str | None] | None = None,
     use_cleanlab: bool = True,
+    provenance: dict[str, object] | None = None,
 ) -> AuditResult:
     scored = score_predictions(proba, y)
     cleanlab = cleanlab_crosscheck(y, proba) if use_cleanlab else {
@@ -198,6 +204,11 @@ def assemble_result(
                 ),
                 image_path=image_path,
                 cleanlab_flag=cleanlab_flag,
+                oof_fold=int(fold_assignments[index]),
+                oof_probabilities={
+                    class_name: float(proba[index, class_index])
+                    for class_index, class_name in enumerate(class_names)
+                },
             )
         )
     by_source = list(findings)
@@ -228,6 +239,7 @@ def assemble_result(
         seed=seed,
         summary=summary,
         rows_by_source=by_source,
+        provenance=provenance or {},
     )
 
 
@@ -253,6 +265,8 @@ def result_to_dict(result: AuditResult) -> dict:
             "reasons": row.reasons,
             "image_path": row.image_path,
             "cleanlab_flag": row.cleanlab_flag,
+            "oof_fold": row.oof_fold,
+            "oof_probabilities": row.oof_probabilities,
         }
         return payload
 
@@ -265,6 +279,7 @@ def result_to_dict(result: AuditResult) -> dict:
         "n_splits": result.n_splits,
         "seed": result.seed,
         "summary": result.summary,
+        "provenance": result.provenance,
         "rows": [row_dict(row, rank) for rank, row in enumerate(result.rows, start=1)],
     }
 
@@ -281,6 +296,7 @@ def audit_matrix(
     progress: Progress | None = None,
     preprocessor_factory: Callable[[], object] | None = None,
     use_cleanlab: bool = True,
+    source_path: Path | None = None,
 ) -> AuditResult:
     array = np.asarray(features, dtype=float)
     y, class_names = _encode(labels)
@@ -291,7 +307,7 @@ def audit_matrix(
         return StandardScaler()
 
     factory = preprocessor_factory or default_factory
-    proba, neighbor_labels, neighbor_indices, used_splits = run_oof(
+    proba, neighbor_labels, neighbor_indices, used_splits, fold_assignments = run_oof(
         array,
         y,
         factory,
@@ -299,6 +315,17 @@ def audit_matrix(
         seed=seed,
         n_neighbors=n_neighbors,
         progress=progress,
+    )
+    source_frame = pd.DataFrame(array)
+    source_frame["__lna_label"] = np.asarray(labels).astype(str)
+    provenance = make_provenance(
+        source=table_source(source_frame, source_path=source_path),
+        class_order=class_names,
+        seed=seed,
+        n_splits=used_splits,
+        n_neighbors=n_neighbors,
+        feature_backend="numeric_matrix_standard_scaler_logistic_regression",
+        configuration={"input_kind": "numeric_matrix"},
     )
     return assemble_result(
         proba=proba,
@@ -308,9 +335,11 @@ def audit_matrix(
         neighbor_indices=neighbor_indices,
         n_splits=used_splits,
         seed=seed,
+        fold_assignments=fold_assignments,
         row_ids=row_ids,
         image_paths=image_paths,
         use_cleanlab=use_cleanlab,
+        provenance=provenance,
     )
 
 
@@ -327,6 +356,7 @@ def audit_table(
     progress: Progress | None = None,
     preprocessor_factory: Callable[[], object] | None = None,
     use_cleanlab: bool = True,
+    source_path: Path | None = None,
 ) -> AuditResult:
     if label_column not in frame.columns:
         raise ValueError(f"Label column {label_column!r} is not in the table")
@@ -350,7 +380,7 @@ def audit_table(
     factory = preprocessor_factory or default_factory
     if progress is not None:
         progress("Fitting out-of-fold models")
-    proba, neighbor_labels, neighbor_indices, used_splits = run_oof(
+    proba, neighbor_labels, neighbor_indices, used_splits, fold_assignments = run_oof(
         prepared,
         y,
         factory,
@@ -362,6 +392,20 @@ def audit_table(
     ids = row_ids
     if ids is None:
         ids = [str(value) for value in frame.index.tolist()]
+    provenance = make_provenance(
+        source=table_source(frame, source_path=source_path),
+        class_order=class_names,
+        seed=seed,
+        n_splits=used_splits,
+        n_neighbors=n_neighbors,
+        feature_backend="table_preprocessor_logistic_regression",
+        configuration={
+            "input_kind": "table",
+            "label_column": str(label_column),
+            "feature_columns": [str(column) for column in features],
+            "column_kinds": kinds,
+        },
+    )
     return assemble_result(
         proba=proba,
         y=y,
@@ -370,8 +414,10 @@ def audit_table(
         neighbor_indices=neighbor_indices,
         n_splits=used_splits,
         seed=seed,
+        fold_assignments=fold_assignments,
         row_ids=ids,
         use_cleanlab=use_cleanlab,
+        provenance=provenance,
     )
 
 
@@ -394,6 +440,7 @@ def audit_image_records(
         from labelnoiseaudit.embeddings import embed_paths
 
         matrix = embed_paths(paths, allow_download=allow_download, progress=progress)
+        feature_backend = "torchvision_resnet18_pretrained"
     else:
         vectors = []
         for index, path in enumerate(paths, start=1):
@@ -401,8 +448,9 @@ def audit_image_records(
                 progress(f"Image features {index}/{len(paths)}")
             vectors.append(classic_features(path))
         matrix = np.vstack(vectors)
+        feature_backend = "classic_cpu_color_histogram_thumbnail_hog"
     row_ids = [f"{label}/{Path(path).name}" for path, label in records]
-    return audit_matrix(
+    result = audit_matrix(
         matrix,
         labels,
         n_splits=n_splits,
@@ -413,4 +461,14 @@ def audit_image_records(
         progress=progress,
         use_cleanlab=use_cleanlab,
     )
+    result.provenance = make_provenance(
+        source=image_source(records),
+        class_order=result.class_names,
+        seed=seed,
+        n_splits=result.n_splits,
+        n_neighbors=n_neighbors,
+        feature_backend=feature_backend,
+        configuration={"input_kind": "images", "embeddings_requested": bool(embeddings)},
+    )
+    return result
 

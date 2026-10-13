@@ -81,8 +81,8 @@ def run_oof(
     seed: int,
     n_neighbors: int,
     progress: Progress | None = None,
-) -> tuple[np.ndarray, list[list[int]], list[list[int]], int]:
-    """Return probabilities, neighbor labels, neighbor indexes, and the fold count.
+) -> tuple[np.ndarray, list[list[int]], list[list[int]], int, np.ndarray]:
+    """Return probabilities, neighbor evidence, fold count, and each row's fold.
 
     ``y`` is integer class indexes. ``preprocessor_factory`` must return a new,
     unfitted transformer every time it is called.
@@ -96,6 +96,7 @@ def run_oof(
     proba = np.zeros((n_rows, n_classes), dtype=float)
     neighbor_labels: list[list[int]] = [[] for _ in range(n_rows)]
     neighbor_indices: list[list[int]] = [[] for _ in range(n_rows)]
+    fold_assignments = np.full(n_rows, -1, dtype=int)
     fold_list = list(folder.split(np.zeros(n_rows), y))
     for fold_number, (train_idx, test_idx) in enumerate(fold_list, start=1):
         if progress is not None:
@@ -109,6 +110,7 @@ def run_oof(
         estimator = make_estimator(seed, sparse_input=sparse.issparse(x_train))
         estimator.fit(x_train, y[train_idx])
         fold_proba = estimator.predict_proba(x_test)
+        fold_assignments[test_idx] = fold_number
         for column, class_index in enumerate(estimator.classes_):
             proba[test_idx, int(class_index)] = fold_proba[:, column]
 
@@ -122,4 +124,6 @@ def run_oof(
             chosen = train_idx[np.asarray(local, dtype=int)]
             neighbor_indices[int(row_index)] = [int(j) for j in chosen]
             neighbor_labels[int(row_index)] = [int(y[j]) for j in chosen]
-    return proba, neighbor_labels, neighbor_indices, splits
+    if np.any(fold_assignments < 1):
+        raise RuntimeError("An out-of-fold assignment was not recorded for every row")
+    return proba, neighbor_labels, neighbor_indices, splits, fold_assignments

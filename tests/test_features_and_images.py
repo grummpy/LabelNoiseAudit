@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from labelnoiseaudit.audit import audit_image_records, audit_table
+from labelnoiseaudit.audit import audit_image_records, audit_table, result_to_dict
 from labelnoiseaudit.datasets import materialize_shapes, synthetic_text_frame
 from labelnoiseaudit.features import build_preprocessor, infer_column_kinds, infer_kind
 from labelnoiseaudit.images import (
@@ -77,8 +77,10 @@ def test_text_and_image_audits_run(tmp_path: Path):
     assert text_result.n_splits == 4
 
     root = materialize_shapes(tmp_path / "shapes", n_per_class=6, seed=1)
+    image_records = iter_class_folder(root)
+    source_bytes = {Path(path): Path(path).read_bytes() for path, _label in image_records}
     image_result = audit_image_records(
-        iter_class_folder(root),
+        image_records,
         n_splits=3,
         seed=1,
         use_cleanlab=False,
@@ -86,6 +88,10 @@ def test_text_and_image_audits_run(tmp_path: Path):
     assert image_result.summary["n_rows"] == 12
     assert all(row.image_path for row in image_result.rows)
     assert all(row.source_index not in row.neighbor_indices for row in image_result.rows_by_source)
+    assert {path: path.read_bytes() for path in source_bytes} == source_bytes
+    payload = result_to_dict(image_result)
+    assert payload["provenance"]["configuration"]["feature_backend"] == "classic_cpu_color_histogram_thumbnail_hog"
+    assert len(payload["provenance"]["source"]["content_sha256"]) == 64
 
 
 def test_zip_slip_is_rejected(tmp_path: Path):

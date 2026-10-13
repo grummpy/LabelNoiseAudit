@@ -64,6 +64,23 @@ def synthetic_text_frame(*, n_per_class: int = 40, seed: int = 42) -> pd.DataFra
     return pd.DataFrame(rows)
 
 
+def synthetic_ambiguous_minority_matrix(*, seed: int = 42) -> tuple[np.ndarray, np.ndarray]:
+    """Generated, overlapping classes with a deliberately smaller minority class.
+
+    This is not a claim about a real population.  It gives the benchmark a
+    controlled setting where a review budget can expose minority false positives
+    instead of reporting only an aggregate ranking score.
+    """
+
+    rng = np.random.default_rng(seed)
+    majority_a = rng.normal(loc=(-1.3, -1.0, 0.4), scale=(0.8, 0.8, 0.9), size=(80, 3))
+    majority_b = rng.normal(loc=(1.3, 1.1, -0.4), scale=(0.8, 0.8, 0.9), size=(80, 3))
+    minority = rng.normal(loc=(0.1, 0.2, 0.0), scale=(1.25, 1.25, 1.1), size=(24, 3))
+    features = np.vstack((majority_a, majority_b, minority))
+    labels = np.array(["majority_a"] * 80 + ["majority_b"] * 80 + ["minority"] * 24)
+    return features, labels
+
+
 def load_builtin_frame(name: str, *, seed: int = 42) -> tuple[pd.DataFrame, str, str]:
     """Return a frame, the label column, and a thumbnail mode.
 
@@ -159,3 +176,5 @@ def benchmark_tasks(seed: int = 42):
         yield name, "matrix", (frame[features].to_numpy(dtype=float), frame[label].to_numpy()), label
     notes = synthetic_text_frame(n_per_class=40, seed=seed)
     yield "synthetic_text", "text", notes, "topic"
+    features, labels = synthetic_ambiguous_minority_matrix(seed=seed)
+    yield "synthetic_ambiguous_minority", "matrix", (features, labels), "label"

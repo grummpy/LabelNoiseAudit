@@ -98,6 +98,7 @@ def _audit(args) -> int:
             seed=args.seed,
             n_neighbors=args.neighbors,
             progress=print,
+            source_path=args.csv,
         )
     else:
         path = args.images
